@@ -26,4 +26,12 @@ impl TokenManager {
     pub fn validate_token(&self, token: &str) -> Option<&String> {
         self.tokens.get(token)
     }
+    pub fn delete_token(&mut self, token: &str) -> Result<(), String> {
+        if self.tokens.contains_key(token) {
+            self.tokens.remove_key(token);
+            Ok(())
+        } else {
+            Err("Already logged out".to_string())
+        }
+    }
 }

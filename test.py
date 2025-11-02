@@ -46,14 +46,13 @@ class TestBruthAPI(AssertionsMixin):
     API_HOST: str = config["main"]["host"]  # pyright: ignore[reportUnknownVariableType]
     API_PORT: str = config["main"]["port"]  # pyright: ignore[reportUnknownVariableType  # pyright: ignore[reportUnknownVariableType]
     token: str = ""
-    id: str = ""
     user_credentials: dict[str, str] = {
         "username": "testuser",
         "email": "test@example.com",
         "password": "testpass",
     }
 
-    def test_create_user(self):
+    def test_1_create_user(self):
         response = requests.post(
             f"http://{self.API_HOST}:{self.API_PORT}/register",
             json=self.user_credentials,
@@ -64,7 +63,7 @@ class TestBruthAPI(AssertionsMixin):
         self.token = data["token"]
         print(self.token)
 
-    def test_create_user_again(self):
+    def test_2_create_user_again(self):
         payload = self.user_credentials.copy()
         payload["username"] = "anothertest"
         response = requests.post(
@@ -76,7 +75,7 @@ class TestBruthAPI(AssertionsMixin):
         self.assertIsInstance(data["message"], str)
         self.assertEqual(data["message"], "User already exists")
 
-    def test_create_user_and_again(self):
+    def test_3_create_user_and_again(self):
         payload = self.user_credentials.copy()
         payload["email"] = "anothertest@example.com"
         response = requests.post(
@@ -88,23 +87,9 @@ class TestBruthAPI(AssertionsMixin):
         self.assertIsInstance(data["message"], str)
         self.assertEqual(data["message"], "User already exists")
 
-    def test_get_id(self):
+    def test_4_get_user(self):
         payload = {
             "token": self.token,
-        }
-        response = requests.post(
-            f"http://{self.API_HOST}:{self.API_PORT}/verify", json=payload
-        )
-        print(response)
-        self.assertEqual(response.status_code, 200)
-        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
-        self.assertIsInstance(data["id"], str)
-        print("User id:", data["id"])
-        self.id = data["id"]
-
-    def test_get_user(self):
-        payload = {
-            "id": self.id,
         }
         response = requests.post(
             f"http://{self.API_HOST}:{self.API_PORT}/user", json=payload
@@ -113,11 +98,64 @@ class TestBruthAPI(AssertionsMixin):
         self.assertEqual(response.status_code, 200)
         data: dict[str, str | bool] = response.json()  # pyright: ignore[reportAny]
         self.assertIsInstance(data, dict)
+        self.assertIsInstance(data["id"], str)
         self.assertIsInstance(data["username"], str)
         self.assertIsInstance(data["email"], str)
         self.assertIsInstance(data["verified"], bool)
         self.assertEqual(response.json()["username"], self.user_credentials["username"])
         self.assertEqual(response.json()["email"], self.user_credentials["email"])
+
+    def test_5_get_fake_user(self):
+        payload = {
+            "token": "fake_token",
+        }
+        response = requests.post(
+            f"http://{self.API_HOST}:{self.API_PORT}/user", json=payload
+        )
+        print(response)
+        self.assertEqual(response.status_code, 401)
+        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
+        self.assertIsInstance(data, dict)
+        self.assertIsInstance(data["message"], str)
+        self.assertEqual(data["message"], "Unauthorized")
+
+    def test_6_logout(self):
+        payload = {
+            "token": self.token,
+        }
+        response = requests.post(
+            f"http://{self.API_HOST}:{self.API_PORT}/logout", json=payload
+        )
+        print(response)
+        self.assertEqual(response.status_code, 200)
+
+    def test_7_logout_again(self):
+        payload = {
+            "token": self.token,
+        }
+        response = requests.post(
+            f"http://{self.API_HOST}:{self.API_PORT}/logout", json=payload
+        )
+        print(response)
+        self.assertEqual(response.status_code, 409)
+        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
+        self.assertIsInstance(data, dict)
+        self.assertIsInstance(data["message"], str)
+        self.assertEqual(data["message"], "Already logged out")
+
+    def test_8_get_user_after_logout(self):
+        payload = {
+            "token": self.token,
+        }
+        response = requests.post(
+            f"http://{self.API_HOST}:{self.API_PORT}/user", json=payload
+        )
+        print(response)
+        self.assertEqual(response.status_code, 401)
+        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
+        self.assertIsInstance(data, dict)
+        self.assertIsInstance(data["message"], str)
+        self.assertEqual(data["message"], "Unauthorized")
 
 
 def cleanup():

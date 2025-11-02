@@ -18,6 +18,7 @@ struct UserRequest {
 
 #[derive(Serialize)]
 struct UserAnswer {
+    id: String,
     username: String,
     email: String,
     verified: bool,
@@ -43,7 +44,7 @@ async fn main() {
     let app = Router::new()
         .route("/register", post(create_user))
         .route("/user", post(get_user))
-        .route("/verify", post(verify_user));
+        .route("/logout", post(logout));
     let host_addr: [u8; 4] = config
         .main
         .host
@@ -60,42 +61,39 @@ async fn main() {
         .unwrap();
 }
 
-async fn get_user(Json(payload): Json<UserIdJson>) -> impl IntoResponse {
-    let db = DB.lock().unwrap();
-    let result = db.get_user_by_id(payload.id).unwrap();
-    match result {
-        Some(user) => (
-            StatusCode::OK,
-            Json(UserAnswer {
-                username: user.username,
-                email: user.email,
-                verified: user.verified,
-            }),
-        )
-            .into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorJson {
-                message: "User not found".to_string(),
-            }),
-        )
-            .into_response(),
-    }
-}
-
-async fn verify_user(Json(payload): Json<TokenJson>) -> impl IntoResponse {
-    println!("Token verification result: {:?}", payload);
+async fn get_user(Json(payload): Json<TokenJson>) -> impl IntoResponse {
     let tm = TOKENS.lock().unwrap();
+    let db = DB.lock().unwrap();
     let result = tm.validate_token(&payload.token);
-    match result {
-        Some(_id) => (StatusCode::OK, Json(UserIdJson { id: _id.clone() })).into_response(),
-        None => (
+    if let Some(id) = result {
+        let result = db.get_user_by_id(id.clone()).unwrap();
+        match result {
+            Some(user) => (
+                StatusCode::OK,
+                Json(UserAnswer {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    verified: user.verified,
+                }),
+            )
+                .into_response(),
+            None => (
+                StatusCode::NOT_FOUND,
+                Json(ErrorJson {
+                    message: "User not found".to_string(),
+                }),
+            )
+                .into_response(),
+        }
+    } else {
+        (
             StatusCode::UNAUTHORIZED,
             Json(ErrorJson {
                 message: "Unauthorized".to_string(),
             }),
         )
-            .into_response(),
+            .into_response()
     }
 }
 
@@ -127,5 +125,14 @@ async fn create_user(Json(payload): Json<UserRequest>) -> impl IntoResponse {
             }),
         )
             .into_response()
+    }
+}
+
+async fn logout(Json(payload): Json<TokenJson>) -> impl IntoResponse {
+    let mut tm = TOKENS.lock().unwrap();
+    let result = tm.delete_token(&payload.token);
+    match result {
+        Ok(_) => (StatusCode::OK).into_response(),
+        Err(err) => (StatusCode::CONFLICT, Json(ErrorJson { message: err })).into_response(),
     }
 }

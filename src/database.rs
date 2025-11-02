@@ -24,7 +24,6 @@ pub struct UserDB {
 }
 
 impl UserDB {
-    /// Create or open database file
     pub fn new(path: String) -> Result<Self> {
         let conn = Connection::open(path)?;
         let db = Self { conn };
@@ -32,7 +31,6 @@ impl UserDB {
         Ok(db)
     }
 
-    /// Create users table if it doesn’t exist
     fn create_table(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS users (
@@ -56,28 +54,17 @@ impl UserDB {
         Ok(id)
     }
 
-    /// Get user by ID
     pub fn get_user_by_id(&self, id: String) -> Result<Option<User>> {
         self.query_single("SELECT * FROM users WHERE id = ?1", params![id])
     }
-    /// Get user by username
     pub fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
         self.query_single("SELECT * FROM users WHERE username = ?1", params![username])
     }
 
-    /// Get user by email
     pub fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
         self.query_single("SELECT * FROM users WHERE email = ?1", params![email])
     }
 
-    /// Mark user as verified
-    pub fn set_user_verified(&self, id: String) -> Result<()> {
-        self.conn
-            .execute("UPDATE users SET verified = 1 WHERE id = ?1", params![id])?;
-        Ok(())
-    }
-
-    /// Internal helper to read single user
     fn query_single(&self, sql: &str, params: impl rusqlite::Params) -> Result<Option<User>> {
         let mut stmt = self.conn.prepare(sql)?;
         let mut rows = stmt.query(params)?;
