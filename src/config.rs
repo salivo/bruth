@@ -13,6 +13,8 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| {
 pub struct Config {
     pub main: MainConfig,
     pub database: DatabaseConfig,
+    pub hash: HashConfig,
+    pub token: TokenConfig,
 }
 
 #[derive(Deserialize)]
@@ -24,6 +26,17 @@ pub struct MainConfig {
 #[derive(Deserialize)]
 pub struct DatabaseConfig {
     pub path: String,
+}
+
+#[derive(Deserialize)]
+pub struct HashConfig {
+    pub cost: u32,
+}
+
+#[derive(Deserialize)]
+pub struct TokenConfig {
+    pub secret: String,
+    pub duration: i64,
 }
 
 fn read_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {

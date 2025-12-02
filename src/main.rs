@@ -1,4 +1,9 @@
-use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post};
+use axum::{
+    Json, Router,
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    routing::post,
+};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
@@ -7,44 +12,33 @@ use config::CONFIG;
 mod database;
 use database::DB;
 mod tokens;
-use tokens::TOKENS;
+use crate::tokens::{create_token, verify_token};
 
 #[derive(Deserialize)]
-struct UserRequest {
+struct UserRegister {
     username: String,
     email: String,
     password: String,
 }
 
-#[derive(Serialize)]
-struct UserAnswer {
-    id: String,
-    username: String,
-    email: String,
-    verified: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct TokenJson {
-    token: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct UserIdJson {
-    id: String,
+#[derive(Deserialize)]
+struct UserLogin {
+    login: String,
+    password: String,
 }
 
 #[derive(Serialize, Deserialize)]
 struct ErrorJson {
     message: String,
 }
+
 #[tokio::main]
 async fn main() {
     let config = &CONFIG;
     let app = Router::new()
-        .route("/register", post(create_user))
-        .route("/user", post(get_user))
-        .route("/logout", post(logout));
+        .route("/register", post(register))
+        .route("/login", post(login))
+        .route("/verify", post(verify));
     let host_addr: [u8; 4] = config
         .main
         .host
@@ -61,78 +55,85 @@ async fn main() {
         .unwrap();
 }
 
-async fn get_user(Json(payload): Json<TokenJson>) -> impl IntoResponse {
-    let tm = TOKENS.lock().unwrap();
+async fn register(Json(payload): Json<UserRegister>) -> impl IntoResponse {
     let db = DB.lock().unwrap();
-    let result = tm.validate_token(&payload.token);
-    if let Some(id) = result {
-        let result = db.get_user_by_id(id.clone()).unwrap();
-        match result {
-            Some(user) => (
-                StatusCode::OK,
-                Json(UserAnswer {
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-                    verified: user.verified,
-                }),
-            )
-                .into_response(),
-            None => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorJson {
-                    message: "User not found".to_string(),
-                }),
-            )
-                .into_response(),
-        }
-    } else {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorJson {
-                message: "Unauthorized".to_string(),
-            }),
-        )
-            .into_response()
-    }
-}
-
-async fn create_user(Json(payload): Json<UserRequest>) -> impl IntoResponse {
-    let db = DB.lock().unwrap();
-    let email_exists = db.get_user_by_email(&payload.email).unwrap().is_some();
-    let username_exists = db
-        .get_user_by_username(&payload.username)
-        .unwrap()
-        .is_some();
+    let email_exists = db.get_user_by_email(&payload.email).is_some();
+    let username_exists = db.get_user_by_username(&payload.username).is_some();
 
     if email_exists || username_exists {
-        (
+        return (
             StatusCode::CONFLICT,
             Json(ErrorJson {
                 message: "User already exists".to_string(),
             }),
         )
-            .into_response()
-    } else {
-        let id = db
-            .create_user(payload.username, payload.email, payload.password)
-            .unwrap();
-        let mut tm = TOKENS.lock().unwrap();
-        (
-            StatusCode::OK,
-            Json(TokenJson {
-                token: { tm.create_token(id) },
-            }),
-        )
-            .into_response()
+            .into_response();
     }
+    let user = db
+        .create_user(payload.username, payload.email, payload.password)
+        .unwrap();
+    let mut headers = HeaderMap::new();
+    let token = create_token(user.id);
+    headers.insert(
+        "Authorization",
+        format!("Bearer {}", token).parse().unwrap(),
+    );
+    (headers, StatusCode::OK).into_response()
 }
 
-async fn logout(Json(payload): Json<TokenJson>) -> impl IntoResponse {
-    let mut tm = TOKENS.lock().unwrap();
-    let result = tm.delete_token(&payload.token);
-    match result {
-        Ok(_) => (StatusCode::OK).into_response(),
-        Err(err) => (StatusCode::CONFLICT, Json(ErrorJson { message: err })).into_response(),
+async fn login(Json(payload): Json<UserLogin>) -> impl IntoResponse {
+    let db = DB.lock().unwrap();
+    let user_exists = db.get_user_by_login(&payload.login).is_some();
+    if !user_exists {
+        return (
+            StatusCode::CONFLICT,
+            Json(ErrorJson {
+                message: "User not exists".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    let result = db.verify_login(&payload.login, &payload.password);
+
+    if result.is_some() {
+        let user = result.unwrap();
+        let token = create_token(user.id);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            format!("Bearer {}", token).parse().unwrap(),
+        );
+        (headers, StatusCode::OK).into_response()
+    } else {
+        StatusCode::UNAUTHORIZED.into_response()
+    }
+}
+async fn verify(headers: HeaderMap) -> impl IntoResponse {
+    let db = DB.lock().unwrap();
+    if let Some(auth_header) = headers.get("Authorization") {
+        if let Ok(header_value) = auth_header.to_str() {
+            let token = header_value
+                .strip_prefix("Bearer ")
+                .unwrap_or(header_value)
+                .trim();
+            let userid_opt = verify_token(token);
+            match userid_opt {
+                Some(userid) => {
+                    let user = db.get_user_by_id(userid).unwrap();
+                    (StatusCode::OK, Json(user)).into_response()
+                }
+                None => (
+                    StatusCode::UNAUTHORIZED,
+                    Json(ErrorJson {
+                        message: "Invalid/Expired Token".to_string(),
+                    }),
+                )
+                    .into_response(),
+            }
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    } else {
+        StatusCode::BAD_REQUEST.into_response()
     }
 }

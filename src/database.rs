@@ -1,4 +1,5 @@
 use crate::config::CONFIG;
+use bcrypt::{hash, verify};
 use once_cell::sync::Lazy;
 use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,7 @@ pub struct User {
     pub id: String,
     pub username: String,
     pub email: String,
-    pub password: String,
+    pub role: String,
     pub verified: bool,
 }
 
@@ -37,6 +38,7 @@ impl UserDB {
                 id          TEXT PRIMARY KEY UNIQUE,
                 username    TEXT NOT NULL UNIQUE,
                 email       TEXT NOT NULL UNIQUE,
+                role        TEXT NOT NULL DEFAULT 'user',
                 password    TEXT NOT NULL,
                 verified    INTEGER NOT NULL DEFAULT 0
             )",
@@ -45,39 +47,75 @@ impl UserDB {
         Ok(())
     }
 
-    pub fn create_user(&self, username: String, email: String, password: String) -> Result<String> {
+    pub fn create_user(
+        &self,
+        username: String,
+        email: String,
+        password: String,
+    ) -> Result<User, String> {
         let id = Uuid::new_v4().to_string();
-        self.conn.execute(
-            "INSERT INTO users (id, username, email, password) VALUES (?1, ?2, ?3, ?4)",
-            params![id, username, email, password],
-        )?;
-        Ok(id)
+        let hashed_pass = hash(password, CONFIG.hash.cost).expect("Failed to hash");
+        self.conn
+            .execute(
+                "INSERT INTO users (id, username, email, password) VALUES (?1, ?2, ?3, ?4)",
+                params![id, username, email, hashed_pass],
+            )
+            .unwrap();
+        Ok(User {
+            id,
+            username,
+            email,
+            role: "user".to_string(),
+            verified: false,
+        })
     }
 
-    pub fn get_user_by_id(&self, id: String) -> Result<Option<User>> {
+    pub fn get_user_by_id(&self, id: String) -> Option<User> {
         self.query_single("SELECT * FROM users WHERE id = ?1", params![id])
     }
-    pub fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
+
+    pub fn get_user_by_username(&self, username: &str) -> Option<User> {
         self.query_single("SELECT * FROM users WHERE username = ?1", params![username])
     }
 
-    pub fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
+    pub fn get_user_by_email(&self, email: &str) -> Option<User> {
         self.query_single("SELECT * FROM users WHERE email = ?1", params![email])
     }
 
-    fn query_single(&self, sql: &str, params: impl rusqlite::Params) -> Result<Option<User>> {
-        let mut stmt = self.conn.prepare(sql)?;
-        let mut rows = stmt.query(params)?;
-        if let Some(row) = rows.next()? {
-            Ok(Some(User {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                email: row.get(2)?,
-                password: row.get(3)?,
-                verified: row.get::<_, i64>(4)? != 0,
-            }))
+    pub fn get_user_by_login(&self, login: &str) -> Option<User> {
+        self.query_single(
+            "SELECT * FROM users WHERE email = ?1 OR username = ?1",
+            params![login],
+        )
+    }
+
+    pub fn verify_login(&self, login: &str, password: &str) -> Option<User> {
+        let user = self.get_user_by_login(login)?;
+        let db_password = self.get_password_by_id(&user.id)?;
+        let valid = verify(password, &db_password).unwrap_or(false);
+        if valid { Some(user) } else { None }
+    }
+
+    fn query_single(&self, sql: &str, params: impl rusqlite::Params) -> Option<User> {
+        let mut stmt = self.conn.prepare(sql).unwrap();
+        let mut rows = stmt.query(params).unwrap();
+        if let Some(row) = rows.next().unwrap() {
+            Some(User {
+                id: row.get(0).unwrap(),
+                username: row.get(1).unwrap(),
+                email: row.get(2).unwrap(),
+                role: row.get(3).unwrap(),
+                verified: row.get::<_, i64>(5).unwrap() != 0,
+            })
         } else {
-            Ok(None)
+            None
         }
+    }
+    pub fn get_password_by_id(&self, id: &String) -> Option<String> {
+        self.conn
+            .query_row("SELECT password FROM users WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .ok()
     }
 }

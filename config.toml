@@ -1,5 +1,13 @@
 [main]
 host = "127.0.0.1"
 port = 5432
+
 [database]
 path = "users.db"
+
+[hash]
+cost = 4
+
+[token]
+secret = "super_secret_key"
+duration = 900

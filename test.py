@@ -1,11 +1,12 @@
+import atexit
+import os
+import socket
+import subprocess
+import time
 from typing import Any
+
 import requests
 import toml
-import subprocess
-import os
-import time
-import socket
-import atexit
 
 SELFRUN = True
 
@@ -39,12 +40,16 @@ class AssertionsMixin:
         if not isinstance(obj, cls):
             raise AssertionError(msg or f"{obj!r} is not an instance of {cls}")
 
+    def assertIsNotNone(self, obj: Any, msg: str | None = None):  # pyright: ignore[reportAny, reportExplicitAny]
+        if obj is None:
+            raise AssertionError(msg or f"{obj!r} is None")
+
 
 class TestBruthAPI(AssertionsMixin):
     with open("config.toml", "r") as f:  # pyright: ignore[reportUnannotatedClassAttribute]
         config: dict[str, dict[str, str]] = toml.load(f)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     API_HOST: str = config["main"]["host"]  # pyright: ignore[reportUnknownVariableType]
-    API_PORT: str = config["main"]["port"]  # pyright: ignore[reportUnknownVariableType  # pyright: ignore[reportUnknownVariableType]
+    API_PORT: str = str(config["main"]["port"])  # pyright: ignore[reportUnknownVariableType]
     token: str = ""
     user_credentials: dict[str, str] = {
         "username": "testuser",
@@ -58,10 +63,10 @@ class TestBruthAPI(AssertionsMixin):
             json=self.user_credentials,
         )
         self.assertEqual(response.status_code, 200)
-        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
-        self.assertIsInstance(data["token"], str)
-        self.token = data["token"]
-        print(self.token)
+        auth_header = response.headers.get("Authorization")
+        self.assertIsNotNone(auth_header, "Authorization header is missing!")
+        self.token = auth_header.split(" ")[1]  # pyright: ignore[reportOptionalMemberAccess]
+        self.assertIsInstance(self.token, str)
 
     def test_2_create_user_again(self):
         payload = self.user_credentials.copy()
@@ -88,11 +93,9 @@ class TestBruthAPI(AssertionsMixin):
         self.assertEqual(data["message"], "User already exists")
 
     def test_4_get_user(self):
-        payload = {
-            "token": self.token,
-        }
+        headers = {"Authorization": f"Bearer {self.token}"}
         response = requests.post(
-            f"http://{self.API_HOST}:{self.API_PORT}/user", json=payload
+            f"http://{self.API_HOST}:{self.API_PORT}/verify", headers=headers
         )
         print(response)
         self.assertEqual(response.status_code, 200)
@@ -106,56 +109,16 @@ class TestBruthAPI(AssertionsMixin):
         self.assertEqual(response.json()["email"], self.user_credentials["email"])
 
     def test_5_get_fake_user(self):
-        payload = {
-            "token": "fake_token",
-        }
+        headers = {"Authorization": "Bearer fake_token_123"}
         response = requests.post(
-            f"http://{self.API_HOST}:{self.API_PORT}/user", json=payload
+            f"http://{self.API_HOST}:{self.API_PORT}/verify", headers=headers
         )
         print(response)
         self.assertEqual(response.status_code, 401)
         data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
         self.assertIsInstance(data, dict)
         self.assertIsInstance(data["message"], str)
-        self.assertEqual(data["message"], "Unauthorized")
-
-    def test_6_logout(self):
-        payload = {
-            "token": self.token,
-        }
-        response = requests.post(
-            f"http://{self.API_HOST}:{self.API_PORT}/logout", json=payload
-        )
-        print(response)
-        self.assertEqual(response.status_code, 200)
-
-    def test_7_logout_again(self):
-        payload = {
-            "token": self.token,
-        }
-        response = requests.post(
-            f"http://{self.API_HOST}:{self.API_PORT}/logout", json=payload
-        )
-        print(response)
-        self.assertEqual(response.status_code, 409)
-        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
-        self.assertIsInstance(data, dict)
-        self.assertIsInstance(data["message"], str)
-        self.assertEqual(data["message"], "Already logged out")
-
-    def test_8_get_user_after_logout(self):
-        payload = {
-            "token": self.token,
-        }
-        response = requests.post(
-            f"http://{self.API_HOST}:{self.API_PORT}/user", json=payload
-        )
-        print(response)
-        self.assertEqual(response.status_code, 401)
-        data: dict[str, str] = response.json()  # pyright: ignore[reportAny]
-        self.assertIsInstance(data, dict)
-        self.assertIsInstance(data["message"], str)
-        self.assertEqual(data["message"], "Unauthorized")
+        self.assertEqual(data["message"], "Invalid/Expired Token")  # Updated message
 
 
 def cleanup():
