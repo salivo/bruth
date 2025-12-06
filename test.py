@@ -8,7 +8,7 @@ from typing import Any
 import requests
 import toml
 
-SELFRUN = True
+SELFRUN = False
 
 
 # ANSI color codes
