@@ -1,0 +1,13 @@
+[main]
+host = "0.0.0.0"
+port = 5000
+
+[database]
+path = "users.db"
+
+[hash]
+cost = 4
+
+[token]
+secret = "super_secret_key"
+duration = 900
