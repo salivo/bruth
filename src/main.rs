@@ -119,8 +119,17 @@ async fn verify(headers: HeaderMap) -> impl IntoResponse {
             let userid_opt = verify_token(token);
             match userid_opt {
                 Some(userid) => {
-                    let user = db.get_user_by_id(userid).unwrap();
-                    (StatusCode::OK, Json(user)).into_response()
+                    let resp = db.get_user_by_id(userid);
+                    match resp {
+                        Some(user) => (StatusCode::OK, Json(user)).into_response(),
+                        None => (
+                            StatusCode::NOT_FOUND,
+                            Json(ErrorJson {
+                                message: "User not found".to_string(),
+                            }),
+                        )
+                            .into_response(),
+                    }
                 }
                 None => (
                     StatusCode::UNAUTHORIZED,
