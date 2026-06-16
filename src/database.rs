@@ -1,7 +1,7 @@
 use crate::config::CONFIG;
 use bcrypt::{hash, verify};
 use once_cell::sync::Lazy;
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -93,7 +93,11 @@ impl UserDB {
         let user = self.get_user_by_login(login)?;
         let db_password = self.get_password_by_id(&user.id)?;
         let valid = verify(password, &db_password).unwrap_or(false);
-        if valid { Some(user) } else { None }
+        if valid {
+            Some(user)
+        } else {
+            None
+        }
     }
 
     fn query_single(&self, sql: &str, params: impl rusqlite::Params) -> Option<User> {
@@ -117,5 +121,50 @@ impl UserDB {
                 row.get(0)
             })
             .ok()
+    }
+
+    pub fn get_users(&self) -> Vec<User> {
+        let mut stmt = self.conn.prepare("SELECT * FROM users").unwrap();
+        let iter = stmt
+            .query_map([], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    email: row.get(2)?,
+                    role: row.get(3)?,
+                    verified: {
+                        let v: i32 = row.get(5)?;
+                        v > 0
+                    },
+                })
+            })
+            .unwrap();
+        iter.filter_map(Result::ok).collect()
+    }
+
+    pub fn search_users(&self, query: &str, limit: i32) -> Vec<User> {
+        if query.trim().is_empty() {
+            return Vec::new();
+        }
+        let pattern = format!("%{}%", query);
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM users WHERE username LIKE ?1 OR email LIKE ?1 LIMIT ?2")
+            .unwrap();
+        let iter = stmt
+            .query_map(params![pattern, limit], |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    email: row.get(2)?,
+                    role: row.get(3)?,
+                    verified: {
+                        let v: i32 = row.get(5)?;
+                        v > 0
+                    },
+                })
+            })
+            .unwrap();
+        iter.filter_map(Result::ok).collect()
     }
 }

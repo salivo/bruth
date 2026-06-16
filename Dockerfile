@@ -61,4 +61,4 @@ COPY config.toml config.toml
 RUN cargo build --release
 CMD ["./target/release/bruth"]
 
-EXPOSE 5000
+EXPOSE 8080

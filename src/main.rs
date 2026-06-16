@@ -1,11 +1,13 @@
 use axum::{
-    Json, Router,
-    http::{HeaderMap, StatusCode},
+    extract::{Json, Query},
+    http::{HeaderMap, StatusCode, Method},
     response::IntoResponse,
-    routing::post,
+    routing::{get, post},
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use tower_http::cors::{Any, CorsLayer};
 
 mod config;
 use config::CONFIG;
@@ -35,10 +37,16 @@ struct ErrorJson {
 #[tokio::main]
 async fn main() {
     let config = &CONFIG;
+    let cors = CorsLayer::permissive();
+
     let app = Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
-        .route("/verify", post(verify));
+        .route("/verify", post(verify))
+        .route("/users", get(get_users))
+        .route("/users/search", get(search_users))
+        .layer(cors);
+
     let host_addr: [u8; 4] = config
         .main
         .host
@@ -145,4 +153,23 @@ async fn verify(headers: HeaderMap) -> impl IntoResponse {
     } else {
         StatusCode::BAD_REQUEST.into_response()
     }
+}
+
+async fn get_users() -> impl IntoResponse {
+    let db_lock = DB.lock().unwrap();
+    let users = db_lock.get_users();
+    (StatusCode::OK, Json(users)).into_response()
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+    limit: Option<i32>,
+}
+
+async fn search_users(Query(query): Query<SearchQuery>) -> impl IntoResponse {
+    let db_lock = DB.lock().unwrap();
+    let limit = query.limit.unwrap_or(20);
+    let users = db_lock.search_users(&query.q, limit);
+    (StatusCode::OK, Json(users)).into_response()
 }
