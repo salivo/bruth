@@ -1,6 +1,5 @@
 [main]
 host = "127.0.0.1"
-port = 5000
 
 [database]
 path = "test.db"
@@ -9,5 +8,11 @@ path = "test.db"
 cost = 4
 
 [token]
-secret = "super_secret_key"
 duration = 900
+
+[validation]
+username_max_len = 50
+email_max_len = 254
+password_min_len = 8
+password_max_len = 72
+search_limit_max = 100

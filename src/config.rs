@@ -1,10 +1,11 @@
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::fs;
+use std::{env, fs};
 
 const DEFAULT_CONFIG_PATH: &str = "config.toml";
 
 pub static CONFIG: Lazy<Config> = Lazy::new(|| {
+    dotenvy::dotenv().ok();
     let path = env::var("CONFIG_PATH").unwrap_or(DEFAULT_CONFIG_PATH.to_string());
     read_config(&path).expect("Failed to load config")
 });
@@ -15,12 +16,12 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub hash: HashConfig,
     pub token: TokenConfig,
+    pub validation: ValidationConfig,
 }
 
 #[derive(Deserialize)]
 pub struct MainConfig {
     pub host: String,
-    pub port: u16,
 }
 
 #[derive(Deserialize)]
@@ -35,8 +36,16 @@ pub struct HashConfig {
 
 #[derive(Deserialize)]
 pub struct TokenConfig {
-    pub secret: String,
     pub duration: i64,
+}
+
+#[derive(Deserialize)]
+pub struct ValidationConfig {
+    pub username_max_len: usize,
+    pub email_max_len: usize,
+    pub password_min_len: usize,
+    pub password_max_len: usize,
+    pub search_limit_max: i32,
 }
 
 fn read_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {

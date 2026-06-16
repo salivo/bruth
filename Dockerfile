@@ -1,16 +1,14 @@
-FROM alpine:3.22
-
-LABEL org.opencontainers.image.source=https://github.com/rust-lang/docker-rust
+FROM alpine:3.22 AS builder
 
 RUN apk add --no-cache \
     ca-certificates \
-    gcc\
+    gcc \
     build-base \
     musl-dev \
     openssl-dev \
-    pkgconfig\
-    sqlite\
-    sqlite-dev\
+    pkgconfig \
+    sqlite \
+    sqlite-dev \
     sqlite-static
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -19,7 +17,6 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     RUST_VERSION=1.91.1
 
 RUN set -eux; \
-    \
     arch="$(apk --print-arch)"; \
     case "$arch" in \
     'x86_64') \
@@ -39,26 +36,33 @@ RUN set -eux; \
     exit 1; \
     ;; \
     esac; \
-    \
     url="https://static.rust-lang.org/rustup/archive/1.28.2/${rustArch}/rustup-init"; \
     wget "$url"; \
     echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
-    \
     chmod +x rustup-init; \
     ./rustup-init -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION --default-host ${rustArch}; \
     rm rustup-init; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
-    \
     rustup --version; \
     cargo --version; \
-    rustc --version;
+    rustc --version
 
 WORKDIR /app
 COPY src/ src/
 COPY Cargo.toml Cargo.toml
-COPY config.toml config.toml
+COPY Cargo.lock Cargo.lock
 
 RUN cargo build --release
-CMD ["./target/release/bruth"]
+
+FROM alpine:3.22 AS runtime
+
+RUN apk add --no-cache ca-certificates sqlite-libs
+
+WORKDIR /app
+
+COPY --from=builder /app/target/release/bruth /app/bruth
+COPY config.toml config.toml
 
 EXPOSE 8080
+
+CMD ["/app/bruth"]

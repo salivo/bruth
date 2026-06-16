@@ -49,7 +49,7 @@ class TestBruthAPI(AssertionsMixin):
     with open("config.toml", "r") as f:  # pyright: ignore[reportUnannotatedClassAttribute]
         config: dict[str, dict[str, str]] = toml.load(f)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     API_HOST: str = config["main"]["host"]  # pyright: ignore[reportUnknownVariableType]
-    API_PORT: str = str(config["main"]["port"])  # pyright: ignore[reportUnknownVariableType]
+    API_PORT: str = "8080"
     token: str = ""
     user_credentials: dict[str, str] = {
         "username": "testuser",
@@ -141,6 +141,9 @@ if __name__ == "__main__":
     _ = atexit.register(cleanup)
     env = os.environ.copy()
     env["CONFIG_PATH"] = "testconfig.toml"
+    env.setdefault("JWT_SECRET", "test_jwt_secret_do_not_use_in_production_32b")
+    env.setdefault("SERVICE_API_KEY", "test_service_key_do_not_use_in_production_32b")
+    env.setdefault("CORS_ALLOWED_ORIGIN", "http://localhost:5000")
     if SELFRUN:
         proc = subprocess.Popen(
             ["cargo", "run"],
@@ -149,7 +152,7 @@ if __name__ == "__main__":
             stderr=subprocess.PIPE,
             text=True,
         )
-    _ = wait_for_server(TestBruthAPI.API_HOST, int(TestBruthAPI.API_PORT))
+    _ = wait_for_server(TestBruthAPI.API_HOST, 8080)
     # ---- Custom top-to-bottom test runner ----
     print("Running tests in order...")
     test_instance = TestBruthAPI()

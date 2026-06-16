@@ -9,9 +9,8 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9.8"
 rusqlite = "0.37.0"
 once_cell = "1.21.3"
-env = "1.0.1"
+dotenvy = "0.15"
 uuid = { version = "1.18.1", features = ["v4"] }
-dict = "0.1.5"
 bcrypt = "0.17.1"
 jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
 chrono = "0.4.42"

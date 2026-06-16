@@ -28,7 +28,7 @@ impl UserDB {
     pub fn new(path: String) -> Result<Self> {
         let conn = Connection::open(path)?;
         let db = Self { conn };
-        db.create_table()?; // auto-create table if not exists
+        db.create_table()?;
         Ok(db)
     }
 
@@ -54,7 +54,7 @@ impl UserDB {
         password: String,
     ) -> Result<User, String> {
         let id = Uuid::new_v4().to_string();
-        let hashed_pass = hash(password, CONFIG.hash.cost).expect("Failed to hash");
+        let hashed_pass = hash(password, CONFIG.hash.cost).expect("Failed to hash password");
         self.conn
             .execute(
                 "INSERT INTO users (id, username, email, password) VALUES (?1, ?2, ?3, ?4)",
@@ -93,11 +93,7 @@ impl UserDB {
         let user = self.get_user_by_login(login)?;
         let db_password = self.get_password_by_id(&user.id)?;
         let valid = verify(password, &db_password).unwrap_or(false);
-        if valid {
-            Some(user)
-        } else {
-            None
-        }
+        if valid { Some(user) } else { None }
     }
 
     fn query_single(&self, sql: &str, params: impl rusqlite::Params) -> Option<User> {
@@ -115,6 +111,7 @@ impl UserDB {
             None
         }
     }
+
     pub fn get_password_by_id(&self, id: &String) -> Option<String> {
         self.conn
             .query_row("SELECT password FROM users WHERE id = ?1", [id], |row| {

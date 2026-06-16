@@ -10,6 +10,10 @@ pub struct Payload {
     pub exp: usize,
 }
 
+fn jwt_secret() -> String {
+    std::env::var("JWT_SECRET").expect("JWT_SECRET environment variable must be set")
+}
+
 pub fn create_token(id: String) -> String {
     let expiration = Utc::now()
         .checked_add_signed(Duration::seconds(CONFIG.token.duration))
@@ -21,25 +25,26 @@ pub fn create_token(id: String) -> String {
         exp: expiration as usize,
     };
 
-    let secret_bytes = CONFIG.token.secret.as_bytes();
-
+    let secret = jwt_secret();
     encode(
         &Header::default(),
         &payload,
-        &EncodingKey::from_secret(secret_bytes),
+        &EncodingKey::from_secret(secret.as_bytes()),
     )
     .expect("Token creation failed")
 }
 
 pub fn verify_token(token: &str) -> Option<String> {
     let validation = Validation::new(Algorithm::HS256);
-
-    let secret_bytes = CONFIG.token.secret.as_bytes();
-
-    let token_data = decode::<Payload>(token, &DecodingKey::from_secret(secret_bytes), &validation);
+    let secret = jwt_secret();
+    let token_data = decode::<Payload>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    );
 
     match token_data {
-        Ok(c) => Some(c.claims.sub), // return userid
+        Ok(c) => Some(c.claims.sub),
         Err(_) => None,
     }
 }
